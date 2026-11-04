@@ -2,6 +2,7 @@
 # Usage:
 #   python3 tools/refresh.py <db_dump_dir> <password>          (folder of items/claims/meta JSON files)
 #   python3 tools/refresh.py --compact <snap.json> <password>  (one JSON file: {"items":[...],"claims":[...],"meta":{...}})
+#   python3 tools/refresh.py --claims <claims.json> <password> (JSON list of claims; keeps items; prints UNCHANGED and writes nothing if same)
 # In --compact mode an item without "img" keeps the photo it had in the current page.
 import json,glob,os,sys,datetime,re,base64,secrets
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -15,7 +16,16 @@ h=open(page).read()
 m=re.search(r'<script id="snapenc" type="application/json">(.*?)</script>',h,re.S); assert m
 def clean_claim(c,cid=None):
     return {"id":c.get("id",cid),"item":c.get("item"),"qty":c.get("qty",1),"self":bool(c.get("self")),"kind":"self" if c.get("self") else "gift"}
-if sys.argv[1]=="--compact":
+if sys.argv[1]=="--claims":
+    src,pw=sys.argv[2:4]
+    old=json.loads(m.group(1)); b=base64.b64decode
+    prev=json.loads(AESGCM(kdf(pw,b(old["s"]),old["n"])).decrypt(b(old["iv"]),b(old["d"]),None))
+    claims=[clean_claim(c) for c in json.load(open(src))]
+    key=lambda cs:sorted((c["id"],c["item"],int(c["qty"] or 1),c["self"]) for c in cs)
+    if key(claims)==key(prev.get("claims",[])):
+        print("UNCHANGED"); sys.exit(0)
+    items=prev["items"]; meta=prev.get("meta",{})
+elif sys.argv[1]=="--compact":
     src,pw=sys.argv[2:4]
     old=json.loads(m.group(1)); b=base64.b64decode
     prev=json.loads(AESGCM(kdf(pw,b(old["s"]),old["n"])).decrypt(b(old["iv"]),b(old["d"]),None))
